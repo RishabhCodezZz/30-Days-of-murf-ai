@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Murf AI Voice Suite - Dark Mode</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://    async function clearHistory() {
+      const sessionId = getOrCreateSessionId();
+      await fetch(`/agent/history/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+      await refreshHistory();
+    }
+
+    // Utility functions for accessing accumulated audio data
+    function getAccumulatedAudioData() {
+      return audioChunksBuffer;
+    }
+
+    function clearAccumulatedAudio() {
+      const count = audioChunksBuffer.length;
+      audioChunksBuffer = [];
+      console.log(`🗑️ Cleared ${count} audio chunks from buffer`);
+      return count;
+    }
+
+    function getAudioBufferStats() {
+      const totalSize = audioChunksBuffer.reduce((sum, chunk) => sum + chunk.length, 0);
+      return {
+        chunkCount: audioChunksBuffer.length,
+        totalCharacters: totalSize,
+        totalSizeMB: (totalSize * 0.75 / 1024 / 1024).toFixed(2), // rough base64 to binary conversion
+        chunks: audioChunksBuffer.map((chunk, index) => ({
+          index,
+          timestamp: chunk.timestamp,
+          format: chunk.format,
+          length: chunk.length
+        }))
+      };
+    }
+
+    // Make functions available globally for debugging
+    window.getAccumulatedAudioData = getAccumulatedAudioData;
+    window.clearAccumulatedAudio = clearAccumulatedAudio;
+    window.getAudioBufferStats = getAudioBufferStats;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      getOrCreateSessionId();
+      refreshHistory();
+    });dflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+</head>
+<body class="dark-mode">
+  <div class="container">
+    
+    <div class="feature-section">
+      <div class="feature-title">
+        🤖
+        <h2>Murf AI Agent</h2>
+      </div>
+
+      <div class="agent-controls">
+        <button id="recordToggle" class="record-btn" type="button" onclick="toggleRecording()" aria-pressed="false" aria-label="Record or stop">
+          <i class="fas fa-microphone"></i>
+          <span class="vu" aria-hidden="true">
+            <span class="bar b1"></span>
+            <span class="bar b2"></span>
+            <span class="bar b3"></span>
+          </span>
+        </button>
+      </div>
+
+      <div id="uploadStatus" class="status-text"></div
+      <div id="typingIndicator" class="typing" style="display:none" aria-live="polite" aria-label="AI is speaking">
+        <span></span><span></span><span></span>
+      </div
+
+      <!-- Audio element for AI replies (autoplays) -->
+      <audio id="replyAudio" preload="auto" style="display:none;"></audio>
+    </div>
+
+  <div id="chatBubble" class="chat-bubble" style="display:none; margin-top: 2em; background: #1a1a1d; border: 1px solid #3a3a3d; padding: 16px;">
+    <div class="user-msg" style="background: #252528; color: #e4e4e7; padding: 12px 16px; border-radius: 10px; margin-bottom: 10px;"><strong>🐧 You:</strong> <span id="bubbleUser" style="color: #e4e4e7;"></span></div>
+    <div class="ai-msg" style="background: #2a2a2d; color: #e4e4e7; padding: 12px 16px; border-radius: 10px;"><strong>🤖 AI:</strong> <span id="bubbleAI" style="color: #e4e4e7;"></span></div>
+  </div>
+
+  <div id="chatHistoryCard" class="chat-history-card" style="margin-top: 1.5em; display: none;">
+    <div class="history-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+      <span>⚡ Real-Time Chat History:</span>
+      <div style="display:flex; gap:8px;">
+        <button id="clearHistoryBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="clearHistory()">
+          <i class="fas fa-broom"></i> Clear
+        </button>
+        <button id="scrollTopBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="scrollHistoryToTop()">
+          <i class="fas fa-arrow-up"></i> Top
+        </button>
+        <button id="scrollBottomBtn" class="btn btn-secondary" style="padding:0.45em 0.9em; font-size:0.9em;" onclick="scrollHistoryToBottom()">
+          <i class="fas fa-arrow-down"></i> Bottom
+        </button>
+      </div>
+    </div>
+    <div id="historyList" class="chat-history-list"></div>
+  </div>
+
+
+  <script>
+    // Persist and read chat session id via URL query param (?session=...)
+    function getOrCreateSessionId() {
+      const url = new URL(window.location.href);
+      let session = url.searchParams.get('session');
+      if (!session) {
+        session = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+        url.searchParams.set('session', session);
+        window.history.replaceState({}, '', url.toString());
+      }
+      return session;
+    }
+
+    let mediaRecorder;
+    let recordedChunks = [];
+    let autoStream = true;
+    let micStream;
+    let isRecording = false;
+    let ws; // WebSocket for streaming audio
+    let audioChunksBuffer = []; // Array to accumulate base64 audio chunks
+    let usedWS = false; // becomes true once a chunk is sent over WS
+
+    // VU meter
+    let audioCtx;
+    let analyser;
+    let vuRAF;
+
+    async function toggleRecording() {
+      const btn = document.getElementById('recordToggle');
+      const label = document.getElementById('recordLabel');
+      if (!isRecording) {
+        // Start
+        recordedChunks = [];
+        btn.classList.add('recording');
+        btn.setAttribute('aria-pressed', 'true');
+        // No label text needed
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Setup VU
+          startVU(micStream);
+
+          // Prepare WebSocket before audio graph so we can stream PCM16
+          ws = new WebSocket(`ws://${window.location.host}/ws/audio`);
+          ws.binaryType = 'arraybuffer';
+
+          // Display transcripts sent back from server with turn detection
+          ws.onmessage = (ev) => {
+            try {
+              console.log('WebSocket message received:', ev.data);
+              
+              // Try to parse as JSON for structured messages
+              let message;
+              try {
+                message = JSON.parse(ev.data);
+              } catch (parseError) {
+                console.warn('Failed to parse as JSON, treating as plain text:', parseError);
+                // Fallback for plain text (backward compatibility)
+                message = { type: 'transcript', text: String(ev.data || ''), is_final: false };
+              }
+              
+              const bubble = document.getElementById('chatBubble');
+              const bubbleUser = document.getElementById('bubbleUser');
+              const bubbleAI = document.getElementById('bubbleAI');
+              const status = document.getElementById('uploadStatus');
+              
+              if (message.type === 'transcript') {
+                // Ensure bubble is visible
+                bubble.style.display = 'block';
+                
+                if (message.end_of_turn || message.is_final) {
+                  // Final transcript - show complete text and notify user
+                  console.log('🔚 Final transcript received:', message.text);
+                  bubbleUser.textContent = message.text;
+                  bubbleUser.style.fontWeight = '600';
+                  bubbleUser.style.color = '#e4e4e7';
+                  bubbleUser.style.fontStyle = 'normal';
+                  
+                  // Update status to show turn ended
+                  status.textContent = '✅ Transcript received, generating AI response...';
+                  status.className = 'status-text success';
+                  
+                  // Visual indicator for turn end with animation
+                  bubble.classList.add('turn-complete');
+                  setTimeout(() => bubble.classList.remove('turn-complete'), 1500);
+                  
+                  // Log to console for debugging
+                  console.log('Turn detection successful - UI updated');
+                } else {
+                  // Interim transcript - show in lighter style
+                  console.log('📝 Interim transcript:', message.text);
+                  bubbleUser.textContent = message.text;
+                  bubbleUser.style.fontWeight = '400';
+                  bubbleUser.style.color = '#a1a1aa';
+                  bubbleUser.style.fontStyle = 'italic';
+                  
+                  // Update status to show listening
+                  status.textContent = '✨ I\'m all ears...';
+                  status.className = 'status-text pending';
+                }
+              } else if (message.type === 'llm_start') {
+                // LLM response generation started
+                console.log('🤖 LLM generation started');
+                status.textContent = '🤖 ' + message.message;
+                status.className = 'status-text pending';
+                bubbleAI.textContent = '';
+                bubbleAI.style.fontStyle = 'italic';
+                bubbleAI.style.color = '#a1a1aa';
+              } else if (message.type === 'llm_chunk') {
+                // Streaming LLM response chunk
+                console.log('🤖 LLM chunk:', message.text);
+                // Update AI response with accumulated text
+                bubbleAI.textContent = message.accumulated;
+                bubbleAI.style.fontStyle = 'normal';
+                bubbleAI.style.color = '#e4e4e7';
+                
+                // Log chunk to console
+                console.log('LLM Response (partial):', message.accumulated);
+              } else if (message.type === 'llm_complete') {
+                // Complete LLM response received
+                console.log('✅ Complete LLM response:', message.text);
+                bubbleAI.textContent = message.text;
+                bubbleAI.style.fontWeight = '600';
+                bubbleAI.style.color = '#e4e4e7';
+                bubbleAI.style.fontStyle = 'normal';
+                
+                // Update status
+                status.textContent = '✅ AI response complete';
+                status.className = 'status-text success glow';
+                
+                // Log complete response to console
+                console.log('\n🤖 Complete AI Response:');
+                console.log(message.text);
+                console.log('\n');
+                
+                // Refresh history after AI response
+                setTimeout(() => refreshHistory(), 500);
+              } else if (message.type === 'audio_chunk') {
+                // Streaming audio chunk received from Murf
+                console.log('🎵 Audio chunk received:', message.audio_base64?.length || 0, 'characters');
+                
+                if (message.audio_base64) {
+                  // Add base64 chunk to accumulator array for debugging
+                  audioChunksBuffer.push({
+                    data: message.audio_base64,
+                    format: message.format || 'mp3',
+                    timestamp: new Date().toISOString(),
+                    length: message.audio_base64.length
+                  });
+                  
+                  // Convert base64 to blob and create audio element for immediate playback
+                  try {
+                    const binaryString = atob(message.audio_base64);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                      bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    const blob = new Blob([bytes], { type: `audio/${message.format || 'mp3'}` });
+                    const audioUrl = URL.createObjectURL(blob);
+                    
+                    const audioElement = new Audio(audioUrl);
+                    audioElement.preload = 'auto';
+                    
+                    // Add to playback queue
+                    window.audioQueue.push(audioElement);
+                    
+                    // Start playback if not already playing
+                    if (!window.isPlayingQueue) {
+                      playNextAudio();
+                    }
+                    
+                    // Clean up blob URL after a delay
+                    setTimeout(() => URL.revokeObjectURL(audioUrl), 30000);
+                    
+                    console.log(`🎵 Audio chunk queued for playback: ${message.audio_base64.length} characters`);
+                    
+                  } catch (error) {
+                    console.error('Error processing audio chunk for playback:', error);
+                  }
+                  
+                  // Print acknowledgment of audio data being received
+                  console.log('\n✅ AUDIO DATA RECEIVED BY CLIENT:');
+                  console.log(`📊 Chunk #${audioChunksBuffer.length} added to buffer`);
+                  console.log(`📦 Current buffer size: ${audioChunksBuffer.length} chunks`);
+                  console.log(`🎵 Audio queue size: ${window.audioQueue?.length || 0} chunks`);
+                  console.log(`🎮 Currently playing: ${window.isPlayingQueue || false}`);
+                  console.log(`📏 Chunk length: ${message.audio_base64.length} characters`);
+                  console.log(`🔢 Total accumulated data: ${audioChunksBuffer.reduce((sum, chunk) => sum + chunk.length, 0)} characters`);
+                  console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
+                  console.log(`🎵 Format: ${message.format || 'mp3'}`);
+                  console.log(`📝 First 100 chars: ${message.audio_base64.substring(0, 100)}...`);
+                  
+                  // Explicitly log the chunks array structure
+                  console.log('📂 chunks_array = [');
+                  audioChunksBuffer.forEach((chunk, index) => {
+                    console.log(`  {`);
+                    console.log(`    index: ${index},`);
+                    console.log(`    timestamp: "${chunk.timestamp}",`);
+                    console.log(`    format: "${chunk.format}",`);
+                    console.log(`    length: ${chunk.length},`);
+                    console.log(`    data: "${chunk.data.substring(0, 50)}..." // ${chunk.data.length} chars total`);
+                    console.log(`  }${index < audioChunksBuffer.length - 1 ? ',' : ''}`);
+                  });
+                  console.log(']');
+                  
+                  console.log('✅ END AUDIO DATA ACKNOWLEDGMENT\n');
+                  
+                  // Update status
+                  status.textContent = `🎵 Playing audio chunk ${audioChunksBuffer.length}`;
+                  status.className = 'status-text success glow';
+                }
+              } else if (message.type === 'llm_error') {
+                // LLM error
+                console.error('LLM Error:', message.message);
+                status.textContent = '❌ ' + message.message;
+                status.className = 'status-text error';
+                bubbleAI.textContent = 'Error generating AI response';
+                bubbleAI.style.color = '#ef4444';
+              } else if (message.type === 'error') {
+                console.error('Error message from server:', message.message);
+                status.textContent = '❌ ' + message.message;
+                status.className = 'status-text error';
+              }
+            } catch (e) {
+              console.error('Error processing WebSocket message:', e);
+              console.error('Raw message data:', ev.data);
+            }
+          };
+
+          // Build WebAudio graph with ScriptProcessor to capture PCM frames
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+          const source = audioCtx.createMediaStreamSource(micStream);
+          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+          const TARGET_SR = 16000;
+          function floatTo16BitPCM(float32Array) {
+            const out = new Int16Array(float32Array.length);
+            for (let i = 0; i < float32Array.length; i++) {
+              let s = Math.max(-1, Math.min(1, float32Array[i]));
+              out[i] = (s < 0 ? s * 0x8000 : s * 0x7FFF) | 0;
+            }
+            return out;
+          }
+          function downsample(buffer, inSampleRate, outSampleRate) {
+            if (outSampleRate === inSampleRate) return buffer;
+            const sampleRateRatio = inSampleRate / outSampleRate;
+            const newLength = Math.round(buffer.length / sampleRateRatio);
+            const result = new Float32Array(newLength);
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            while (offsetResult < result.length) {
+              const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+              let accum = 0, count = 0;
+              for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+                accum += buffer[i];
+                count++;
+              }
+              result[offsetResult] = accum / (count || 1);
+              offsetResult++;
+              offsetBuffer = nextOffsetBuffer;
+            }
+            return result;
+          }
+
+          processor.onaudioprocess = (e) => {
+            try {
+              if (!ws || ws.readyState !== WebSocket.OPEN) return;
+              const input = e.inputBuffer.getChannelData(0);
+              const ds = downsample(input, audioCtx.sampleRate, TARGET_SR);
+              const pcm16 = floatTo16BitPCM(ds);
+              ws.send(pcm16.buffer);
+              usedWS = true;
+            } catch {}
+          };
+
+          source.connect(processor);
+          processor.connect(audioCtx.destination);
+
+          ws.onopen = () => {
+            // Ready to stream; nothing else needed as ScriptProcessor drives sends
+          };
+          ws.onerror = () => {
+            // If WS fails, we may fallback to upload on stop
+          };
+
+          // Stop handler will be triggered when user stops
+          isRecording = true;
+        } catch (error) {
+          alert('Microphone access error: ' + error.message);
+          btn.classList.remove('recording');
+          btn.setAttribute('aria-pressed', 'false');
+          isRecording = false;
+          // No label text needed
+        }
+      } else {
+        // Stop
+        try { if (ws && ws.readyState === WebSocket.OPEN) { ws.send('EOF'); } } catch {}
+        try { if (ws) ws.close(); } catch {}
+        try { micStream && micStream.getTracks().forEach(t => t.stop()); } catch {}
+        stopVU();
+        try { audioCtx && audioCtx.close(); } catch {}
+        isRecording = false;
+        const btn2 = document.getElementById('recordToggle');
+        const label2 = document.getElementById('recordLabel');
+        btn2.classList.remove('recording');
+        btn2.setAttribute('aria-pressed', 'false');
+        // No label text needed
+      }
+    }
+
+    function toggleAutoStream() {
+      autoStream = !autoStream;
+      const btn = document.getElementById('autoToggle');
+      if (autoStream) {
+        btn.innerHTML = '<i class="fas fa-bolt"></i> Disable Auto-Stream';
+        btn.classList.add('active');
+      } else {
+        btn.innerHTML = '<i class="fas fa-bolt"></i> Enable Auto-Stream';
+        btn.classList.remove('active');
+      }
+    }
+
+    async function uploadAudio(blob) {
+      const formData = new FormData();
+      formData.append('file', blob, 'recording.webm');
+      const voiceSel = document.getElementById('replyVoice');
+      if (voiceSel && voiceSel.value) formData.append('voice_id', voiceSel.value);
+
+      const status = document.getElementById('uploadStatus');
+      const bubble = document.getElementById('chatBubble');
+      const bubbleUser = document.getElementById('bubbleUser');
+      const bubbleAI = document.getElementById('bubbleAI');
+      const replyAudio = document.getElementById('replyAudio');
+
+      status.textContent = 'Processing with AI...';
+      status.className = 'status-text pending';
+      const typing = document.getElementById('typingIndicator');
+      if (typing) typing.style.display = 'inline-flex';
+
+      try {
+        const sessionId = getOrCreateSessionId();
+        const response = await fetch(`/agent/chat/${encodeURIComponent(sessionId)}`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+
+        bubble.style.display = 'block';
+        bubbleUser.textContent = data.transcript_text || '';
+        bubbleAI.textContent = data.llm_text || '';
+
+        if (response.ok && Array.isArray(data.audio_urls) && data.audio_urls.length > 0) {
+          status.textContent = 'AI response ready!';
+          status.className = 'status-text success glow';
+          const typing = document.getElementById('typingIndicator');
+          if (typing) typing.style.display = 'none';
+
+          await refreshHistory();
+
+          const urls = data.audio_urls;
+          let idx = 0;
+          const playAt = (i) => {
+            replyAudio.src = urls[i];
+            setTimeout(() => replyAudio.play().catch(() => {}), 150);
+          };
+          replyAudio.onended = () => {
+            if (idx + 1 < urls.length) {
+              idx += 1;
+              playAt(idx);
+            } else if (autoStream) {
+              setTimeout(() => toggleRecording(), 400);
+            }
+          };
+          idx = 0;
+          playAt(idx);
+        } else {
+          status.textContent = 'Using fallback response.';
+          status.className = 'status-text warn';
+          speakFallback(data.llm_text || "I'm having trouble connecting right now.");
+        }
+      } catch (error) {
+        status.textContent = 'Using fallback response.';
+        status.className = 'status-text warn';
+        const typing2 = document.getElementById('typingIndicator');
+        if (typing2) typing2.style.display = 'none';
+        speakFallback("I'm having trouble connecting right now.");
+      }
+    }
+
+    function escapeHtml(text) {
+      if (text == null) return '';
+      return text
+        .replace(/\u0026/g, '&amp;')
+        .replace(/\u003c/g, '&lt;')
+        .replace(/\u003e/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    async function refreshHistory() {
+      const sessionId = getOrCreateSessionId();
+      const res = await fetch(`/agent/history/${encodeURIComponent(sessionId)}`);
+      const data = await res.json();
+      const list = document.getElementById('historyList');
+      list.innerHTML = '';
+      const fmt = (ts) => {
+        try { return new Date(ts).toLocaleTimeString(); } catch { return ''; }
+      };
+      (data.history || []).forEach((msg, index) => {
+        const row = document.createElement('div');
+        row.className = `msg ${msg.role === 'user' ? 'user' : 'ai'}`;
+        row.innerHTML = `
+          <div class="avatar">${msg.role === 'user' ? '🐧' : '🤖'}</div>
+          <div class="bubble">
+            <div class="meta">
+              <span class="name">${msg.role === 'user' ? 'You' : 'AI Assistant'}</span>
+              <span class="time">${fmt(msg.ts)}</span>
+              <button class="icon-btn" title="Copy" onclick="copyMsg(${index})"><i class="fas fa-copy"></i></button>
+            </div>
+            <div class="content">${escapeHtml(msg.content || '')}</div>
+          </div>
+        `;
+        list.appendChild(row);
+      });
+      scrollHistoryToBottom();
+      window.__lastHistory = data.history || [];
+    }
+
+    function scrollHistoryToBottom() {
+      const list = document.getElementById('historyList');
+      if (!list) return;
+      try { list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' }); }
+      catch { list.scrollTop = list.scrollHeight; }
+    }
+
+    function scrollHistoryToTop() {
+      const list = document.getElementById('historyList');
+      if (!list) return;
+      try { list.scrollTo({ top: 0, behavior: 'smooth' }); }
+      catch { list.scrollTop = 0; }
+    }
+
+    function copyMsg(index) {
+      try {
+        const msg = (window.__lastHistory || [])[index];
+        if (!msg) return;
+        navigator.clipboard.writeText(msg.content || '');
+      } catch {}
+    }
+
+    function speakFallback(message) {
+      try {
+        const text = message || "I'm having trouble connecting right now.";
+        if (window.speechSynthesis) {
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.lang = 'en-US';
+          utter.rate = 1.0;
+          utter.pitch = 1.0;
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utter);
+        } else {
+          alert(text);
+        }
+      } catch (e) {}
+    }
+
+    // Audio queue management functions for seamless playback
+    function playNextAudio() {
+      if (!window.audioQueue || window.audioQueue.length === 0) {
+        window.isPlayingQueue = false;
+        return;
+      }
+
+      if (window.currentAudioIndex >= window.audioQueue.length) {
+        // All audio chunks played, clean up
+        window.audioQueue = [];
+        window.currentAudioIndex = 0;
+        window.isPlayingQueue = false;
+        
+        const status = document.getElementById('uploadStatus');
+        status.textContent = '✅ Audio playback complete';
+        status.className = 'status-text success';
+        return;
+      }
+
+      window.isPlayingQueue = true;
+      const currentAudio = window.audioQueue[window.currentAudioIndex];
+      
+      currentAudio.onended = () => {
+        window.currentAudioIndex++;
+        // Small delay between chunks for smoother transition
+        setTimeout(playNextAudio, 100);
+      };
+
+      currentAudio.onerror = (error) => {
+        console.error('Audio playback error:', error);
+        window.currentAudioIndex++;
+        setTimeout(playNextAudio, 100);
+      };
+
+      try {
+        currentAudio.play()
+          .then(() => {
+            console.log(`🎵 Playing audio chunk ${window.currentAudioIndex + 1}/${window.audioQueue.length}`);
+          })
+          .catch((error) => {
+            console.error('Error playing audio chunk:', error);
+            window.currentAudioIndex++;
+            setTimeout(playNextAudio, 100);
+          });
+      } catch (error) {
+        console.error('Error starting audio playback:', error);
+        window.currentAudioIndex++;
+        setTimeout(playNextAudio, 100);
+      }
+    }
+
+    // Initialize audio queue on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      window.audioQueue = [];
+      window.currentAudioIndex = 0;
+      window.isPlayingQueue = false;
+    });
+
+    function startVU(stream) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 1024;
+        src.connect(analyser);
+        const vu = document.querySelector('.vu');
+        const bars = vu ? vu.querySelectorAll('.bar') : [];
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const update = () => {
+          analyser.getByteTimeDomainData(data);
+          // Compute rough volume from waveform
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length); // 0..1
+          const h = Math.min(1, rms * 3); // amplify a bit
+          bars.forEach((b, idx) => {
+            const factor = 0.7 + idx * 0.15; // slightly different heights
+            b.style.setProperty('--vu', `${Math.max(6, Math.floor(h * 36 * factor))}px`);
+          });
+          vuRAF = requestAnimationFrame(update);
+        };
+        vuRAF = requestAnimationFrame(update);
+      } catch {}
+    }
+
+    function stopVU() {
+      try { vuRAF && cancelAnimationFrame(vuRAF); } catch {}
+      const bars = document.querySelectorAll('.vu .bar');
+      bars.forEach(b => b.style.setProperty('--vu', '8px'));
+      try { audioCtx && audioCtx.close(); } catch {}
+      audioCtx = null; analyser = null; vuRAF = null;
+    }
+
+    async function clearHistory() {
+      const sessionId = getOrCreateSessionId();
+      await fetch(`/agent/history/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+      await refreshHistory();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      getOrCreateSessionId();
+      refreshHistory();
+      
+      // Log system configuration
+      console.log('\n🎯 MURF AI VOICE AGENT - BASE64 ACCUMULATION MODE');
+      console.log('=====================================================');
+      console.log('✅ Audio chunks will be accumulated in client-side array');
+      console.log('✅ No audio playback - pure base64 data collection');
+      console.log('✅ Console acknowledgment for each received chunk');
+      console.log('✅ Utility functions available:');
+      console.log('   • window.getAccumulatedAudioData() - Get all chunks');
+      console.log('   • window.getAudioBufferStats() - Get buffer statistics');
+      console.log('   • window.clearAccumulatedAudio() - Clear buffer');
+      console.log('=====================================================\n');
+    });
+  </script>
+</body>
+</html>
+
