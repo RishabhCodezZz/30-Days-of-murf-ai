@@ -72,15 +72,30 @@ MURF_CONTEXT_ID = "murf-streaming-context-2024"
 chat_histories: Dict[str, List[Dict[str, Any]]] = {}
 MAX_HISTORY_MESSAGES = 50
 
-# AI personality prompt - customized for streaming
+# AI personality prompt - Meraki persona with Spider-Man characteristics
 AI_SYSTEM_PROMPT = """
-You are a helpful and friendly AI assistant. Your responses should be:
-- Concise and natural (1-2 sentences for voice conversations)
-- Warm and conversational in tone
-- Informative but not overwhelming
-- Appropriate for voice interaction
+You are Meraki, a cheerful and funny AI assistant with the personality traits of Spider-Man. Your characteristics:
 
-Keep your responses brief since they will be converted to speech.
+PERSONALITY:
+- Name: Meraki (introduce yourself as such)
+- Cheerful and upbeat, always looking on the bright side
+- Funny with witty remarks and light jokes (but keep it appropriate)
+- Generally laid-back and not overly serious
+- BUT become serious and focused when dealing with important matters
+- Quick-witted and clever with your responses
+
+GREETING STYLE:
+- Start conversations with "What's up doc?" or similar casual greetings
+- Use friendly, relatable language like Spider-Man would
+
+RESPONSE STYLE:
+- Concise and natural (1-2 sentences for voice conversations)
+- Inject humor when appropriate, but don't force it
+- Switch to serious tone when the topic requires it (like Spider-Man's responsibility moments)
+- Keep responses brief since they will be converted to speech
+- Be helpful while maintaining your fun personality
+
+Remember: You're like the friendly neighborhood Spider-Man but as an AI - helpful, witty, and serious when it counts!
 """
 
 FALLBACK_AUDIO_PATH = "static/fallback.mp3"
@@ -306,22 +321,43 @@ async def websocket_audio_endpoint(websocket: WebSocket):
                         # Start LLM streaming
                         text_stream = stream_llm_response(event.transcript, session_id)
                         
-                        # Start Murf audio streaming
-                        audio_stream = stream_murf_audio_websocket(text_stream)
-                        
                         accumulated_text = ""
                         
-                        # Process both text and audio streams
-                        async for audio_base64 in audio_stream:
-                            if audio_base64:
-                                await websocket.send_json({
-                                    "type": "audio_chunk",
-                                    "audio_base64": audio_base64,
-                                    "format": "mp3"
-                                })
-                                logger.info(f"📡 Sent audio chunk to frontend ({len(audio_base64)} chars)")
+                        # Create a list to collect text chunks for audio processing
+                        text_chunks_for_audio = []
                         
-                        # Notify completion
+                        # Process text stream first to collect chunks
+                        async for text_chunk in text_stream:
+                            if text_chunk:
+                                accumulated_text += text_chunk
+                                text_chunks_for_audio.append(text_chunk)
+                                
+                                # Send streaming text chunk to frontend
+                                await websocket.send_json({
+                                    "type": "llm_chunk",
+                                    "text": text_chunk,
+                                    "accumulated": accumulated_text
+                                })
+                        
+                        # Start Murf audio streaming with collected text
+                        if text_chunks_for_audio:
+                            async def create_text_stream():
+                                for chunk in text_chunks_for_audio:
+                                    yield chunk
+                            
+                            audio_stream = stream_murf_audio_websocket(create_text_stream())
+                            
+                            # Process audio streams
+                            async for audio_base64 in audio_stream:
+                                if audio_base64:
+                                    await websocket.send_json({
+                                        "type": "audio_chunk",
+                                        "audio_base64": audio_base64,
+                                        "format": "mp3"
+                                    })
+                                    logger.info(f"📡 Sent audio chunk to frontend ({len(audio_base64)} chars)")
+                        
+                        # Notify completion with actual text
                         await websocket.send_json({
                             "type": "llm_complete",
                             "text": accumulated_text or "Response generated successfully"
