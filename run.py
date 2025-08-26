@@ -20,6 +20,8 @@ def check_dependencies():
         from dotenv import load_dotenv
         import websockets
         import aiohttp
+        # --- NEW: Also check for newsapi client ---
+        import newsapi
         print("✅ All dependencies are installed")
         return True
     except ImportError as e:
@@ -36,13 +38,16 @@ def check_env_file():
         print("ASSEMBLYAI_API_KEY=your_key_here")
         print("GEMINI_API_KEY=your_key_here")
         print("MURF_API_KEY=your_key_here")
+        # --- NEW: Add News API key to the instructions ---
+        print("NEWS_API_KEY=your_key_here")
         return False
     
     # Check if keys are present
     from dotenv import load_dotenv
     load_dotenv()
     
-    required_keys = ["ASSEMBLYAI_API_KEY", "GEMINI_API_KEY", "MURF_API_KEY"]
+    # --- MODIFIED: Add NEWS_API_KEY to the list of required keys ---
+    required_keys = ["ASSEMBLYAI_API_KEY", "GEMINI_API_KEY", "MURF_API_KEY", "NEWS_API_KEY"]
     missing_keys = []
     
     for key in required_keys:
@@ -77,6 +82,8 @@ def main():
     print("   • AI-powered responses (Google Gemini)")
     print("   • Voice synthesis (Murf)")
     print("   • WebSocket streaming")
+    # --- NEW: Add news skill to the feature list ---
+    print("   • 'Spider-Sense' for News (NewsAPI)")
     print("   • Modern UI interface")
     print("-" * 50)
     print("🎵 Audio Processing:")

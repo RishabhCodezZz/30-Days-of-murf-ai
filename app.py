@@ -27,6 +27,8 @@ from datetime import datetime
 import uuid
 import aiohttp
 import ssl
+# --- NEW: Import NewsAPI ---
+from newsapi import NewsApiClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +39,8 @@ load_dotenv()
 MURF_KEY = os.getenv("MURF_API_KEY")
 ASSEMBLY_KEY = os.getenv("ASSEMBLYAI_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# --- NEW: Load NewsAPI Key ---
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 # App setup
 app = FastAPI(
@@ -65,6 +69,15 @@ if MURF_KEY:
 else:
     logger.warning("MURF_API_KEY missing - voice synthesis will fail")
 
+# --- NEW: Configure NewsAPI Client ---
+if NEWS_API_KEY:
+    newsapi = NewsApiClient(api_key=NEWS_API_KEY)
+    logger.info("NewsAPI key loaded successfully")
+else:
+    newsapi = None
+    logger.warning("NEWS_API_KEY missing - news skill will be disabled")
+
+
 # Static context ID for Murf WebSocket (to avoid context limit issues)
 MURF_CONTEXT_ID = "murf-streaming-context-2024"
 
@@ -72,7 +85,7 @@ MURF_CONTEXT_ID = "murf-streaming-context-2024"
 chat_histories: Dict[str, List[Dict[str, Any]]] = {}
 MAX_HISTORY_MESSAGES = 50
 
-# AI personality prompt - Meraki persona with Spider-Man characteristics
+# --- MODIFIED: Updated AI personality prompt ---
 AI_SYSTEM_PROMPT = """
 You are Meraki, a cheerful and funny AI assistant with the personality traits of Spider-Man. Your characteristics:
 
@@ -95,6 +108,11 @@ RESPONSE STYLE:
 - Keep responses brief since they will be converted to speech
 - Be helpful while maintaining your fun personality
 
+SPECIAL SKILL - "SPIDER-SENSE" FOR NEWS:
+- If the user asks for "news," "headlines," "what's happening," or anything similar, you can provide the latest news.
+- The news headlines will be provided to you in the user's prompt, starting with "LATEST NEWS:".
+- Weave these headlines into your response with your classic Spidey-style wit. For example: "My spider-sense is tingling! Looks like the top headline is..."
+
 Remember: You're like the friendly neighborhood Spider-Man but as an AI - helpful, witty, and serious when it counts!
 """
 
@@ -104,10 +122,39 @@ FALLBACK_TEXT = "I'm having trouble connecting right now. Please try again."
 # Murf WebSocket configuration
 MURF_WS_URL = "wss://api.murf.ai/v1/speech/generate-stream"
 
+# --- MODIFIED: Function to get latest news with a more robust query ---
+def get_latest_news():
+    """Fetches top 5 headlines using a more reliable query for the free plan."""
+    if not newsapi:
+        return "News service is unavailable right now."
+    try:
+        # Using a broad, global query like 'AI' is more reliable on the free plan
+        all_articles = newsapi.get_everything(q='AI', language='en', sort_by='publishedAt', page_size=5)
+        if all_articles['status'] == 'ok' and all_articles['articles']:
+            headlines = [article['title'] for article in all_articles['articles']]
+            return "LATEST NEWS: " + "; ".join(headlines)
+        else:
+            logger.warning(f"NewsAPI returned no articles: {all_articles}")
+            return "Couldn't fetch the latest news right now."
+    except Exception as e:
+        # Make the error log very explicit for debugging
+        error_message = f"!!!!!!!!!! NEWSAPI ERROR !!!!!!!!!!!\n{e}\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        print(error_message) # Print directly to terminal
+        logger.error(f"Error fetching news: {e}")
+        return "My spider-sense is a bit fuzzy on the news right now."
+
 
 async def stream_llm_response(user_text: str, session_id: str) -> AsyncGenerator[str, None]:
     """Stream AI response using Gemini with real-time generation"""
     try:
+        # --- NEW: Check for news keywords ---
+        news_keywords = ["news", "headlines", "latest", "happening"]
+        if any(keyword in user_text.lower() for keyword in news_keywords):
+            logger.info("News keyword detected, fetching headlines...")
+            news_summary = get_latest_news()
+            # Prepend news to user's prompt for context
+            user_text = f"{news_summary}. Based on these headlines, what should I tell the user?"
+
         # Get or initialize chat history for this session
         history = chat_histories.get(session_id, [])
         
@@ -288,18 +335,14 @@ async def websocket_audio_endpoint(websocket: WebSocket):
     current_loop = asyncio.get_running_loop()
     session_id = str(uuid.uuid4())
     
-    # --- FIX START: Add a state flag ---
     is_processing_llm = False
-    # --- FIX END ---
 
     def on_begin(client, event: BeginEvent):
         logger.info(f"Streaming session started: {event.id}")
     
     def on_turn(client, event: TurnEvent):
         """Handle turn events from AssemblyAI"""
-        # --- FIX START: Allow modification of the flag ---
         nonlocal is_processing_llm
-        # --- FIX END ---
 
         if hasattr(event, 'transcript') and event.transcript:
             transcript_data = {
@@ -316,43 +359,41 @@ async def websocket_audio_endpoint(websocket: WebSocket):
             
             logger.info(f"Transcript: '{event.transcript}' (final: {event.end_of_turn})")
             
-            # --- FIX START: Check the flag before processing ---
             if event.end_of_turn and event.transcript.strip() and not is_processing_llm:
-                is_processing_llm = True # Set the flag to prevent duplicate processing
-                # --- FIX END ---
+                is_processing_llm = True
                 async def process_llm_and_audio():
-                    # --- FIX START: Allow modification for reset ---
                     nonlocal is_processing_llm
-                    # --- FIX END ---
                     try:
-                        # Notify UI that LLM generation started
-                        await websocket.send_json({
-                            "type": "llm_start",
-                            "message": "Generating AI response..."
-                        })
-                        
-                        # Start LLM streaming
+                        # --- MODIFIED: Wrap send calls in try/except blocks ---
+                        try:
+                            await websocket.send_json({
+                                "type": "llm_start",
+                                "message": "Generating AI response..."
+                            })
+                        except RuntimeError:
+                            logger.warning("WebSocket already closed, cannot send llm_start.")
+                            return # Exit if connection is closed
+
                         text_stream = stream_llm_response(event.transcript, session_id)
                         
                         accumulated_text = ""
-                        
-                        # Create a list to collect text chunks for audio processing
                         text_chunks_for_audio = []
                         
-                        # Process text stream first to collect chunks
                         async for text_chunk in text_stream:
                             if text_chunk:
                                 accumulated_text += text_chunk
                                 text_chunks_for_audio.append(text_chunk)
                                 
-                                # Send streaming text chunk to frontend
-                                await websocket.send_json({
-                                    "type": "llm_chunk",
-                                    "text": text_chunk,
-                                    "accumulated": accumulated_text
-                                })
-                        
-                        # Start Murf audio streaming with collected text
+                                try:
+                                    await websocket.send_json({
+                                        "type": "llm_chunk",
+                                        "text": text_chunk,
+                                        "accumulated": accumulated_text
+                                    })
+                                except RuntimeError:
+                                    logger.warning("WebSocket already closed, cannot send llm_chunk.")
+                                    return
+
                         if text_chunks_for_audio:
                             async def create_text_stream():
                                 for chunk in text_chunks_for_audio:
@@ -360,34 +401,40 @@ async def websocket_audio_endpoint(websocket: WebSocket):
                             
                             audio_stream = stream_murf_audio_websocket(create_text_stream())
                             
-                            # Process audio streams
                             async for audio_base64 in audio_stream:
                                 if audio_base64:
-                                    await websocket.send_json({
-                                        "type": "audio_chunk",
-                                        "audio_base64": audio_base64,
-                                        "format": "mp3"
-                                    })
-                                    logger.info(f"📡 Sent audio chunk to frontend ({len(audio_base64)} chars)")
+                                    try:
+                                        await websocket.send_json({
+                                            "type": "audio_chunk",
+                                            "audio_base64": audio_base64,
+                                            "format": "mp3"
+                                        })
+                                        logger.info(f"📡 Sent audio chunk to frontend ({len(audio_base64)} chars)")
+                                    except RuntimeError:
+                                        logger.warning("WebSocket already closed, cannot send audio_chunk.")
+                                        return
                         
-                        # Notify completion with actual text
-                        await websocket.send_json({
-                            "type": "llm_complete",
-                            "text": accumulated_text or "Response generated successfully"
-                        })
-                        
+                        try:
+                            await websocket.send_json({
+                                "type": "llm_complete",
+                                "text": accumulated_text or "Response generated successfully"
+                            })
+                        except RuntimeError:
+                            logger.warning("WebSocket already closed, cannot send llm_complete.")
+                            return
+
                     except Exception as e:
                         logger.error(f"Error in LLM/Audio processing: {e}")
-                        await websocket.send_json({
-                            "type": "llm_error",
-                            "message": f"Error: {str(e)}"
-                        })
+                        try:
+                            await websocket.send_json({
+                                "type": "llm_error",
+                                "message": f"Error: {str(e)}"
+                            })
+                        except RuntimeError:
+                             logger.warning("WebSocket already closed, cannot send llm_error.")
                     finally:
-                        # --- FIX START: Reset the flag ---
                         is_processing_llm = False
-                        # --- FIX END ---
                 
-                # Schedule the async processing
                 current_loop.create_task(process_llm_and_audio())
     
     def on_error(client, error: StreamingError):
@@ -401,7 +448,6 @@ async def websocket_audio_endpoint(websocket: WebSocket):
         logger.info(f"Streaming session terminated")
     
     try:
-        # Initialize AssemblyAI streaming client
         streaming_client = StreamingClient(
             StreamingClientOptions(
                 api_key=ASSEMBLY_KEY,
@@ -409,13 +455,11 @@ async def websocket_audio_endpoint(websocket: WebSocket):
             )
         )
         
-        # Set up event handlers
         streaming_client.on(StreamingEvents.Begin, on_begin)
         streaming_client.on(StreamingEvents.Turn, on_turn)
         streaming_client.on(StreamingEvents.Error, on_error)
         streaming_client.on(StreamingEvents.Termination, on_terminated)
         
-        # Connect to streaming service
         streaming_client.connect(
             StreamingParameters(
                 sample_rate=16000,
@@ -423,7 +467,6 @@ async def websocket_audio_endpoint(websocket: WebSocket):
             )
         )
         
-        # Audio streaming setup (same as before)
         import queue
         import threading
         
@@ -460,7 +503,6 @@ async def websocket_audio_endpoint(websocket: WebSocket):
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         streaming_task = current_loop.run_in_executor(executor, run_streaming)
         
-        # Task to send transcripts to WebSocket
         async def send_transcripts():
             while True:
                 try:
@@ -472,7 +514,6 @@ async def websocket_audio_endpoint(websocket: WebSocket):
         
         transcript_task = asyncio.create_task(send_transcripts())
         
-        # Main loop: receive audio data
         try:
             while True:
                 try:
@@ -493,7 +534,6 @@ async def websocket_audio_endpoint(websocket: WebSocket):
                     break
                     
         finally:
-            # Cleanup
             keep_running.clear()
             streaming_task.cancel()
             transcript_task.cancel()
@@ -556,13 +596,15 @@ async def health_check():
         "apis": {
             "assemblyai": bool(ASSEMBLY_KEY),
             "gemini": bool(GEMINI_API_KEY),
-            "murf": bool(MURF_KEY)
+            "murf": bool(MURF_KEY),
+            "newsapi": bool(NEWS_API_KEY)
         },
         "features": {
             "streaming_llm": True,
             "streaming_audio": True,
             "websocket_integration": True,
-            "base64_audio": True
+            "base64_audio": True,
+            "news_skill": True
         },
         "murf_context_id": MURF_CONTEXT_ID,
         "timestamp": datetime.now().isoformat()
@@ -570,3 +612,4 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+
