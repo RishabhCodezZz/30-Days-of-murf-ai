@@ -161,7 +161,7 @@ async def stream_murf_audio_websocket(text_stream: AsyncGenerator[str, None], vo
             if text_chunk.strip():
                 accumulated_text += text_chunk
                 chunk_count += 1
-                logger.info(f"� LLM chunk {chunk_count}: '{text_chunk}'")
+                logger.info(f" LLM chunk {chunk_count}: '{text_chunk}'")
         
         if accumulated_text.strip():
             # Generate mock base64 audio for the complete text
@@ -288,11 +288,19 @@ async def websocket_audio_endpoint(websocket: WebSocket):
     current_loop = asyncio.get_running_loop()
     session_id = str(uuid.uuid4())
     
+    # --- FIX START: Add a state flag ---
+    is_processing_llm = False
+    # --- FIX END ---
+
     def on_begin(client, event: BeginEvent):
         logger.info(f"Streaming session started: {event.id}")
     
     def on_turn(client, event: TurnEvent):
         """Handle turn events from AssemblyAI"""
+        # --- FIX START: Allow modification of the flag ---
+        nonlocal is_processing_llm
+        # --- FIX END ---
+
         if hasattr(event, 'transcript') and event.transcript:
             transcript_data = {
                 "type": "transcript",
@@ -308,9 +316,14 @@ async def websocket_audio_endpoint(websocket: WebSocket):
             
             logger.info(f"Transcript: '{event.transcript}' (final: {event.end_of_turn})")
             
-            # If it's the end of a turn, start LLM streaming
-            if event.end_of_turn and event.transcript.strip():
+            # --- FIX START: Check the flag before processing ---
+            if event.end_of_turn and event.transcript.strip() and not is_processing_llm:
+                is_processing_llm = True # Set the flag to prevent duplicate processing
+                # --- FIX END ---
                 async def process_llm_and_audio():
+                    # --- FIX START: Allow modification for reset ---
+                    nonlocal is_processing_llm
+                    # --- FIX END ---
                     try:
                         # Notify UI that LLM generation started
                         await websocket.send_json({
@@ -369,6 +382,10 @@ async def websocket_audio_endpoint(websocket: WebSocket):
                             "type": "llm_error",
                             "message": f"Error: {str(e)}"
                         })
+                    finally:
+                        # --- FIX START: Reset the flag ---
+                        is_processing_llm = False
+                        # --- FIX END ---
                 
                 # Schedule the async processing
                 current_loop.create_task(process_llm_and_audio())
