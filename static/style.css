@@ -120,3 +120,9 @@ body {
     background-color: rgba(233, 69, 96, 0.3); /* Reddish hover */
     border-color: rgba(233, 69, 96, 0.5);
 }
+
+/* Style for the user transcript display */
+#userTranscript {
+  min-height: 1.5rem; /* Reserve space to prevent layout shift */
+  transition: all 0.3s ease;
+}

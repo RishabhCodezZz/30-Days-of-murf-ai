@@ -44,9 +44,10 @@
         </div>
       </div>
 
-      <!-- Status Display -->
-      <div id="uploadStatus" class="text-center h-6 mb-4 text-gray-400 transition-all duration-300">
-        Click the orb to start talking
+      <!-- Status & Transcript Display -->
+      <div class="text-center h-12 mb-4 transition-all duration-300 flex flex-col justify-center items-center">
+        <div id="uploadStatus" class="text-gray-400">Click the orb to start talking</div>
+        <div id="userTranscript" class="text-blue-300 font-medium italic mt-1"></div>
       </div>
 
       <!-- Chat History -->
@@ -156,6 +157,7 @@
     const orb = document.getElementById('orb');
     const orbIcon = document.getElementById('orb-icon');
     const statusEl = document.getElementById('uploadStatus');
+    const transcriptEl = document.getElementById('userTranscript');
 
     function setOrbState(state) {
         orb.className = `orb ${state}`;
@@ -172,6 +174,7 @@
         try {
           setOrbState('listening');
           statusEl.textContent = "I'm all ears...";
+          transcriptEl.textContent = ""; // Clear previous transcript
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           ws = new WebSocket(`ws://${window.location.host}/ws/audio`);
           ws.binaryType = 'arraybuffer';
@@ -180,6 +183,7 @@
               let message = JSON.parse(ev.data);
               if (message.type === 'transcript' && message.is_final && message.text.trim()) {
                 statusEl.textContent = 'Got it! Thinking...';
+                transcriptEl.textContent = `You said: "${message.text}"`; // Display final transcript
                 setOrbState('processing');
               } else if (message.type === 'llm_start') {
                 setOrbState('processing');
@@ -251,6 +255,7 @@
         isRecording = false;
         setOrbState('idle');
         statusEl.textContent = 'Click the orb to start talking';
+        transcriptEl.textContent = '';
       }
     }
     
@@ -280,8 +285,9 @@
             audio.onended = () => playNextInQueue();
         } else {
             isPlaying = false;
+            // FIX: Don't change status text here. Only change the orb state.
+            // The main status text will be updated when the user starts a new recording.
             setOrbState('idle');
-            statusEl.textContent = 'Click the orb to start talking';
         }
     }
 
