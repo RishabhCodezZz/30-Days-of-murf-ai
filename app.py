@@ -2,7 +2,6 @@ from fastapi import FastAPI, UploadFile, File, Request, Path, WebSocket, WebSock
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from dotenv import load_dotenv
 import requests
 import os
 import assemblyai as aai
@@ -27,20 +26,12 @@ from datetime import datetime
 import uuid
 import aiohttp
 import ssl
-# --- NEW: Import NewsAPI ---
 from newsapi import NewsApiClient
+from pydantic import BaseModel, Field
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Load API keys
-load_dotenv()
-MURF_KEY = os.getenv("MURF_API_KEY")
-ASSEMBLY_KEY = os.getenv("ASSEMBLYAI_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# --- NEW: Load NewsAPI Key ---
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 # App setup
 app = FastAPI(
@@ -51,31 +42,15 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Configure APIs
-if ASSEMBLY_KEY:
-    aai.settings.api_key = ASSEMBLY_KEY
-    logger.info("AssemblyAI API key loaded successfully")
-else:
-    logger.warning("ASSEMBLYAI_API_KEY missing - speech recognition will fail")
+# --- NEW: Pydantic model for API Keys ---
+class ApiKeys(BaseModel):
+    assemblyai: str = Field(..., alias="ASSEMBLYAI_API_KEY")
+    gemini: str = Field(..., alias="GEMINI_API_KEY")
+    murf: str = Field(..., alias="MURF_API_KEY")
+    newsapi: str = Field(..., alias="NEWS_API_KEY")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    logger.info("Gemini API key loaded successfully")
-else:
-    logger.warning("GEMINI_API_KEY missing - AI responses will fail")
-
-if MURF_KEY:
-    logger.info("Murf API key loaded successfully")
-else:
-    logger.warning("MURF_API_KEY missing - voice synthesis will fail")
-
-# --- NEW: Configure NewsAPI Client ---
-if NEWS_API_KEY:
-    newsapi = NewsApiClient(api_key=NEWS_API_KEY)
-    logger.info("NewsAPI key loaded successfully")
-else:
-    newsapi = None
-    logger.warning("NEWS_API_KEY missing - news skill will be disabled")
+# --- MODIFIED: This will now be populated exclusively from the UI ---
+user_api_keys: Dict[str, str] = {}
 
 
 # Static context ID for Murf WebSocket (to avoid context limit issues)
@@ -85,7 +60,6 @@ MURF_CONTEXT_ID = "murf-streaming-context-2024"
 chat_histories: Dict[str, List[Dict[str, Any]]] = {}
 MAX_HISTORY_MESSAGES = 50
 
-# --- MODIFIED: Updated AI personality prompt ---
 AI_SYSTEM_PROMPT = """
 You are Meraki, a cheerful and funny AI assistant with the personality traits of Spider-Man. Your characteristics:
 
@@ -122,13 +96,13 @@ FALLBACK_TEXT = "I'm having trouble connecting right now. Please try again."
 # Murf WebSocket configuration
 MURF_WS_URL = "wss://api.murf.ai/v1/speech/generate-stream"
 
-# --- MODIFIED: Function to get latest news with a more robust query ---
-def get_latest_news():
+
+def get_latest_news(api_key: str):
     """Fetches top 5 headlines using a more reliable query for the free plan."""
-    if not newsapi:
+    if not api_key:
         return "News service is unavailable right now."
     try:
-        # Using a broad, global query like 'AI' is more reliable on the free plan
+        newsapi = NewsApiClient(api_key=api_key)
         all_articles = newsapi.get_everything(q='AI', language='en', sort_by='publishedAt', page_size=5)
         if all_articles['status'] == 'ok' and all_articles['articles']:
             headlines = [article['title'] for article in all_articles['articles']]
@@ -137,37 +111,36 @@ def get_latest_news():
             logger.warning(f"NewsAPI returned no articles: {all_articles}")
             return "Couldn't fetch the latest news right now."
     except Exception as e:
-        # Make the error log very explicit for debugging
         error_message = f"!!!!!!!!!! NEWSAPI ERROR !!!!!!!!!!!\n{e}\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        print(error_message) # Print directly to terminal
+        print(error_message)
         logger.error(f"Error fetching news: {e}")
         return "My spider-sense is a bit fuzzy on the news right now."
 
 
-async def stream_llm_response(user_text: str, session_id: str) -> AsyncGenerator[str, None]:
+async def stream_llm_response(user_text: str, session_id: str, api_keys: Dict[str, str]) -> AsyncGenerator[str, None]:
     """Stream AI response using Gemini with real-time generation"""
     try:
-        # --- NEW: Check for news keywords ---
+        gemini_api_key = api_keys.get("gemini")
+        if not gemini_api_key:
+            raise ValueError("Gemini API key is missing.")
+        genai.configure(api_key=gemini_api_key)
+
         news_keywords = ["news", "headlines", "latest", "happening"]
         if any(keyword in user_text.lower() for keyword in news_keywords):
             logger.info("News keyword detected, fetching headlines...")
-            news_summary = get_latest_news()
-            # Prepend news to user's prompt for context
+            news_api_key = api_keys.get("newsapi")
+            news_summary = get_latest_news(news_api_key)
             user_text = f"{news_summary}. Based on these headlines, what should I tell the user?"
 
-        # Get or initialize chat history for this session
         history = chat_histories.get(session_id, [])
-        
-        # Initialize Gemini model
+
         model = genai.GenerativeModel(
             "gemini-1.5-flash",
             system_instruction=AI_SYSTEM_PROMPT
         )
-        
-        # Start chat with existing history
+
         chat = model.start_chat(history=history)
         
-        # Generate streaming response
         logger.info(f"Starting LLM streaming for: {user_text[:50]}...")
         response = chat.send_message(user_text, stream=True)
         
@@ -180,7 +153,6 @@ async def stream_llm_response(user_text: str, session_id: str) -> AsyncGenerator
                 logger.info(f"LLM Chunk: '{chunk_text}'")
                 yield chunk_text
         
-        # Update chat history after complete response
         chat_histories[session_id] = chat.history[-MAX_HISTORY_MESSAGES:]
         
         logger.info(f"Complete LLM Response: {accumulated_text}")
@@ -190,20 +162,18 @@ async def stream_llm_response(user_text: str, session_id: str) -> AsyncGenerator
         yield FALLBACK_TEXT
 
 
-async def stream_murf_audio_websocket(text_stream: AsyncGenerator[str, None], voice_id: str = "en-US-natalie") -> AsyncGenerator[str, None]:
+async def stream_murf_audio_websocket(text_stream: AsyncGenerator[str, None], api_keys: Dict[str, str], voice_id: str = "en-US-natalie") -> AsyncGenerator[str, None]:
     """Stream text to Murf WebSocket and get back base64 audio chunks"""
     try:
-        if not MURF_KEY:
+        murf_api_key = api_keys.get("murf")
+        if not murf_api_key:
             raise Exception("Murf API key not available")
         
-        # For demonstration purposes, since the exact Murf WebSocket API might not be available,
-        # let's create a fallback that generates mock base64 audio and prints it to console
         logger.info("🎵 Starting Murf audio streaming simulation...")
         
         accumulated_text = ""
         chunk_count = 0
         
-        # Collect all text chunks
         async for text_chunk in text_stream:
             if text_chunk.strip():
                 accumulated_text += text_chunk
@@ -211,70 +181,41 @@ async def stream_murf_audio_websocket(text_stream: AsyncGenerator[str, None], vo
                 logger.info(f" LLM chunk {chunk_count}: '{text_chunk}'")
         
         if accumulated_text.strip():
-            # Generate mock base64 audio for the complete text
-            # This simulates what would come from Murf WebSocket
             logger.info(f"🎵 Generating audio for complete text: '{accumulated_text}'")
             
-            # Create a mock base64 audio string (this would normally come from Murf)
-            mock_audio_data = f"MOCK_AUDIO_FOR_{accumulated_text.replace(' ', '_').upper()}"
-            mock_base64 = base64.b64encode(mock_audio_data.encode()).decode()
-            
-            # Print base64 audio to console as requested
-            print(f"\n🎵 BASE64 AUDIO CHUNK:")
-            print(f"Length: {len(mock_base64)} characters")
-            print(f"Text processed: '{accumulated_text}'")
-            print(f"First 100 chars: {mock_base64[:100]}...")
-            print("🎵 END BASE64 AUDIO CHUNK\n")
-            
-            # Also try to use regular Murf API as fallback
             try:
-                audio_url = await generate_murf_audio_fallback(accumulated_text, voice_id)
+                audio_url = await generate_murf_audio_fallback(accumulated_text, murf_api_key, voice_id)
                 if audio_url:
                     logger.info(f"✅ Murf REST API generated audio: {audio_url}")
                     
-                    # Convert URL audio to base64 if possible
-                    import requests
                     response = requests.get(audio_url, timeout=30)
                     if response.status_code == 200:
                         actual_base64 = base64.b64encode(response.content).decode()
-                        
-                        print(f"\n🎵 ACTUAL BASE64 AUDIO FROM MURF:")
-                        print(f"Length: {len(actual_base64)} characters")
-                        print(f"Source URL: {audio_url}")
-                        print(f"First 100 chars: {actual_base64[:100]}...")
-                        print("🎵 END ACTUAL BASE64 AUDIO\n")
-                        
                         yield actual_base64
                         return
             except Exception as e:
                 logger.warning(f"Murf REST API fallback failed: {e}")
-            
-            # Yield the mock base64 for demonstration
+
+            # Fallback to mock audio if REST API fails
+            mock_audio_data = f"MOCK_AUDIO_FOR_{accumulated_text.replace(' ', '_').upper()}"
+            mock_base64 = base64.b64encode(mock_audio_data.encode()).decode()
             yield mock_base64
             
     except Exception as e:
         logger.error(f"Error in Murf audio streaming: {e}")
-        # Return fallback base64 audio if available
         try:
             if os.path.exists(FALLBACK_AUDIO_PATH):
                 with open(FALLBACK_AUDIO_PATH, "rb") as f:
                     fallback_b64 = base64.b64encode(f.read()).decode()
-                    
-                    print(f"\n🎵 FALLBACK BASE64 AUDIO:")
-                    print(f"Length: {len(fallback_b64)} characters")
-                    print(f"Source: {FALLBACK_AUDIO_PATH}")
-                    print(f"First 100 chars: {fallback_b64[:100]}...")
-                    print("🎵 END FALLBACK BASE64 AUDIO\n")
-                    
                     yield fallback_b64
         except:
             pass
 
 
-async def generate_murf_audio_fallback(text: str, voice_id: str = "en-US-natalie") -> str:
+async def generate_murf_audio_fallback(text: str, api_key: str, voice_id: str = "en-US-natalie") -> str:
     """Fallback to regular Murf REST API"""
     try:
-        if not MURF_KEY:
+        if not api_key:
             return None
         
         payload = {
@@ -287,7 +228,7 @@ async def generate_murf_audio_fallback(text: str, voice_id: str = "en-US-natalie
         }
         
         headers = {
-            "api-key": MURF_KEY,
+            "api-key": api_key,
             "Content-Type": "application/json"
         }
         
@@ -307,6 +248,30 @@ async def generate_murf_audio_fallback(text: str, voice_id: str = "en-US-natalie
     except Exception as e:
         logger.error(f"Error in Murf REST API: {e}")
         return None
+
+@app.post("/api/keys")
+async def set_api_keys(keys: ApiKeys):
+    """Receive and store API keys from the user."""
+    global user_api_keys
+    user_api_keys = {
+        "assemblyai": keys.assemblyai,
+        "gemini": keys.gemini,
+        "murf": keys.murf,
+        "newsapi": keys.newsapi
+    }
+    logger.info("Received and stored new API keys.")
+    return {"message": "API keys updated successfully."}
+
+@app.get("/api/keys")
+async def get_api_keys():
+    """Return the currently stored API keys."""
+    return {
+        "ASSEMBLYAI_API_KEY": user_api_keys.get("assemblyai"),
+        "GEMINI_API_KEY": user_api_keys.get("gemini"),
+        "MURF_API_KEY": user_api_keys.get("murf"),
+        "NEWS_API_KEY": user_api_keys.get("newsapi"),
+    }
+
 @app.get("/")
 async def serve_ui(request: Request):
     """Serve the main UI"""
@@ -321,11 +286,15 @@ async def websocket_audio_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection established")
     
-    if not ASSEMBLY_KEY:
-        logger.error("AssemblyAI API key not available")
+    # --- MODIFIED: Use the globally stored user_api_keys ---
+    api_keys = user_api_keys.copy()
+    
+    assembly_key = api_keys.get("assemblyai")
+    if not all(api_keys.values()):
+        logger.error("One or more API keys are not available")
         await websocket.send_json({
             "type": "error",
-            "message": "Speech recognition service unavailable"
+            "message": "All API keys are required. Please configure them in the settings."
         })
         await websocket.close()
         return
@@ -364,7 +333,6 @@ async def websocket_audio_endpoint(websocket: WebSocket):
                 async def process_llm_and_audio():
                     nonlocal is_processing_llm
                     try:
-                        # --- MODIFIED: Wrap send calls in try/except blocks ---
                         try:
                             await websocket.send_json({
                                 "type": "llm_start",
@@ -372,9 +340,9 @@ async def websocket_audio_endpoint(websocket: WebSocket):
                             })
                         except RuntimeError:
                             logger.warning("WebSocket already closed, cannot send llm_start.")
-                            return # Exit if connection is closed
+                            return
 
-                        text_stream = stream_llm_response(event.transcript, session_id)
+                        text_stream = stream_llm_response(event.transcript, session_id, api_keys)
                         
                         accumulated_text = ""
                         text_chunks_for_audio = []
@@ -399,7 +367,7 @@ async def websocket_audio_endpoint(websocket: WebSocket):
                                 for chunk in text_chunks_for_audio:
                                     yield chunk
                             
-                            audio_stream = stream_murf_audio_websocket(create_text_stream())
+                            audio_stream = stream_murf_audio_websocket(create_text_stream(), api_keys)
                             
                             async for audio_base64 in audio_stream:
                                 if audio_base64:
@@ -450,7 +418,7 @@ async def websocket_audio_endpoint(websocket: WebSocket):
     try:
         streaming_client = StreamingClient(
             StreamingClientOptions(
-                api_key=ASSEMBLY_KEY,
+                api_key=assembly_key,
                 api_host="streaming.assemblyai.com"
             )
         )
@@ -594,10 +562,10 @@ async def health_check():
         "status": "healthy",
         "service": "Murf AI Agent - Streaming Edition",
         "apis": {
-            "assemblyai": bool(ASSEMBLY_KEY),
-            "gemini": bool(GEMINI_API_KEY),
-            "murf": bool(MURF_KEY),
-            "newsapi": bool(NEWS_API_KEY)
+            "assemblyai": bool(user_api_keys.get("assemblyai")),
+            "gemini": bool(user_api_keys.get("gemini")),
+            "murf": bool(user_api_keys.get("murf")),
+            "newsapi": bool(user_api_keys.get("newsapi"))
         },
         "features": {
             "streaming_llm": True,
@@ -609,7 +577,7 @@ async def health_check():
         "murf_context_id": MURF_CONTEXT_ID,
         "timestamp": datetime.now().isoformat()
     }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
-
