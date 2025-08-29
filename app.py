@@ -203,13 +203,13 @@ async def stream_murf_audio_websocket(text_stream: AsyncGenerator[str, None], ap
             
     except Exception as e:
         logger.error(f"Error in Murf audio streaming: {e}")
+        # Return mock audio instead of relying on missing fallback.mp3
         try:
-            if os.path.exists(FALLBACK_AUDIO_PATH):
-                with open(FALLBACK_AUDIO_PATH, "rb") as f:
-                    fallback_b64 = base64.b64encode(f.read()).decode()
-                    yield fallback_b64
+            mock_audio_data = "MOCK_FALLBACK_AUDIO"
+            mock_base64 = base64.b64encode(mock_audio_data.encode()).decode()
+            yield mock_base64
         except:
-            pass
+            yield ""  # Return empty string if all else fails
 
 
 async def generate_murf_audio_fallback(text: str, api_key: str, voice_id: str = "en-US-natalie") -> str:
@@ -580,4 +580,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

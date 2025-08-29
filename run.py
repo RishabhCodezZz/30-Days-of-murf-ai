@@ -4,6 +4,7 @@ Startup script for the Murf AI Voice Agent
 Simple launcher with dependency validation
 """
 
+import os
 import sys
 import subprocess
 
@@ -43,11 +44,13 @@ def main():
     try:
         # Run the main FastAPI application
         import uvicorn
+        port = int(os.environ.get("PORT", 8000))
+        host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
         uvicorn.run(
             "app:app",
-            host="127.0.0.1",
-            port=8000,
-            reload=True,
+            host=host,
+            port=port,
+            reload=False if os.environ.get("RENDER") else True,
             log_level="info"
         )
     except KeyboardInterrupt:
