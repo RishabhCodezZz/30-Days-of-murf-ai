@@ -215,7 +215,7 @@
           transcriptEl.textContent = "";
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-          const wsUrl = `ws://${window.location.host}/ws/audio`;
+          const wsUrl = `wss://${window.location.host}/ws/audio`;
           ws = new WebSocket(wsUrl);
 
           ws.binaryType = 'arraybuffer';
