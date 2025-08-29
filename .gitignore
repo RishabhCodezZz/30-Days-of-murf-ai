@@ -1,16 +1,13 @@
-# Environment variables
-.env
-
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
 
 # Virtual environments
 venv/
-.venv
+.venv/
 
-# Audio uploads
-uploads/
+# Audio files
 *.wav
 *.mp3
 *.webm
@@ -19,8 +16,13 @@ uploads/
 # IDE files
 .vscode/
 .idea/
-enhanced.html
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+
+#env
+.env

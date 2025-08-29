@@ -1,249 +1,293 @@
-# 🕷️ Meraki AI - Your Friendly Neighborhood AI Assistant
+# Meraki AI - Voice Assistant
 
-> **Real-time voice conversation system with a Spider-Man inspired AI personality**
+> **A sophisticated real-time voice conversation system powered by cutting-edge AI technologies**
 
-Meet **Meraki**, your cheerful and witty AI companion with the personality traits of Spider-Man! This sophisticated voice interaction platform combines cutting-edge speech recognition, streaming AI responses, and natural voice synthesis to deliver an engaging conversational experience.
+Meraki AI is an intelligent voice assistant that combines advanced speech recognition, streaming AI responses, and natural voice synthesis to create engaging conversational experiences. Built with modern web technologies and powered by industry-leading APIs, it offers seamless voice interactions with a friendly AI personality.
 
----
+## 🌟 Key Features
 
-## ✨ Key Features
+### Core Capabilities
+- **🎤 Real-Time Speech Recognition** - Instant speech-to-text conversion using AssemblyAI's streaming API
+- **🧠 Intelligent AI Conversations** - Dynamic responses powered by Google Gemini with streaming capabilities
+- **🔊 Natural Voice Synthesis** - Human-like speech output through Murf AI's advanced text-to-speech
+- **📰 News Integration** - Stay updated with current headlines via NewsAPI integration
+- **💭 Session Memory** - Maintains conversation context throughout your interaction
+- **🎨 Modern Interface** - Responsive web UI with smooth animations and particle effects
 
-🎯 **Real-time Speech Recognition** - Instant speech-to-text via AssemblyAI streaming  
-🧠 **AI-Powered Conversations** - Intelligent streaming responses by Google Gemini  
-🔊 **Natural Voice Synthesis** - Human-like speech output via Murf AI WebSocket  
-⚡ **WebSocket Streaming** - Ultra-low latency real-time audio processing  
-📰 **News Integration** - "Spider-sense" for latest headlines via NewsAPI  
-🎭 **Dynamic Personality** - Cheerful Spider-Man inspired AI character  
-💬 **Session Memory** - Maintains conversation context across interactions  
-🎨 **Modern Interface** - Responsive UI with animated particle effects  
-🌐 **RESTful API** - FastAPI backend with comprehensive endpoints  
+### User Experience
+- **One-Click Interaction** - Simply click the animated orb to start conversations
+- **Live Transcription** - See your words transcribed in real-time as you speak
+- **Contextual Responses** - AI remembers previous parts of your conversation
+- **Multi-Modal Feedback** - Visual, audio, and text feedback for comprehensive interaction
 
----
-
-## 🚀 Installation & Setup
+## 🚀 Quick Start Guide
 
 ### Prerequisites
-Ensure you have Python 3.8+ installed, then install dependencies:
+Ensure you have Python 3.8 or higher installed on your system. You can check your Python version by running:
 ```bash
-pip install -r requirements.txt
+python --version
 ```
 
-### Environment Configuration
-Configure your API credentials by creating an environment file:
+### Installation Steps
 
-1. Copy the sample configuration:
+1. **Clone or Download the Project**
    ```bash
-   cp .env.sample .env
-   ```
-
-2. Add your API keys to the `.env` file:
-   ```env
-   # Required APIs
-   ASSEMBLYAI_API_KEY=your_assemblyai_key_here
-   GEMINI_API_KEY=your_gemini_key_here
-   MURF_API_KEY=your_murf_key_here
+   # If using git
+   git clone <repository-url>
+   cd meraki-ai
    
-   # Optional - for news features
-   NEWS_API_KEY=your_news_api_key_here
+   # Or download and extract the ZIP file
    ```
 
-### Application Launch
-Start the application using the provided launcher:
-```bash
-python run.py
-```
+2. **Install Required Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+   This will install all necessary Python packages including FastAPI, WebSocket support, and API clients.
 
-The launcher performs automatic dependency validation and environment checks before starting the server.
+3. **Launch the Application**
+   ```bash
+   python run.py
+   ```
+   The launcher will automatically validate dependencies and start the server.
 
-### Access the Application
-Navigate to: **http://localhost:8000**
+4. **Access the Web Interface**
+   - Open your web browser
+   - Navigate to: `http://localhost:8000`
+   - You should see the Meraki AI interface with an animated orb
 
----
+5. **Configure API Keys**
+   - Click the "Settings" button in the top-right corner
+   - Enter your API keys in the configuration modal
+   - Click "Save Keys" to store your credentials
 
-## 🔧 API Service Configuration
+6. **Start Your First Conversation**
+   - Click the central animated orb to begin recording
+   - Speak naturally into your microphone
+   - Watch as your speech is transcribed in real-time
+   - Listen to Meraki's AI-generated response
+   - Click the orb again to stop recording
 
-The following services are required for full functionality:
+## 🔑 API Configuration
 
-| Service | Purpose | Registration | Required |
-|---------|---------|--------------|----------|
-| **AssemblyAI** | Real-time speech recognition | [Create Account](https://www.assemblyai.com/) | ✅ Yes |
-| **Google Gemini** | AI response generation | [Get API Key](https://ai.google.dev/) | ✅ Yes |
-| **Murf AI** | Text-to-speech synthesis | [Sign Up](https://murf.ai/) | ✅ Yes |
-| **NewsAPI** | Latest headlines integration | [Register Here](https://newsapi.org/register) | 🔄 Optional |
+Meraki AI requires API keys from several services to function properly. All services offer free tiers suitable for testing and personal use.
 
-> **Note**: The application will work without NewsAPI, but Meraki's "spider-sense" news feature will be disabled.
+### Required Services
 
----
+| Service | Purpose | Free Tier | Registration Link |
+|---------|---------|-----------|-------------------|
+| **AssemblyAI** | Speech Recognition | ✅ 5 hours/month | [Sign Up](https://www.assemblyai.com/) |
+| **Google Gemini** | AI Responses | ✅ Generous limits | [Get API Key](https://ai.google.dev/) |
+| **Murf AI** | Text-to-Speech | ✅ Limited usage | [Create Account](https://murf.ai/) |
+| **NewsAPI** | Headlines (Optional) | ✅ 1000 requests/day | [Register](https://newsapi.org/) |
 
-## 🏗️ Technical Architecture
+### API Key Setup Process
 
-The application is built using modern technologies for optimal performance:
+1. **AssemblyAI Setup**
+   - Visit [AssemblyAI](https://www.assemblyai.com/)
+   - Create a free account
+   - Navigate to your dashboard
+   - Copy your API key from the account settings
 
+2. **Google Gemini Setup**
+   - Go to [Google AI Studio](https://ai.google.dev/)
+   - Sign in with your Google account
+   - Create a new API key
+   - Copy the generated key
+
+3. **Murf AI Setup**
+   - Register at [Murf AI](https://murf.ai/)
+   - Complete account verification
+   - Access your API credentials in account settings
+   - Copy your API key
+
+4. **NewsAPI Setup (Optional)**
+   - Visit [NewsAPI](https://newsapi.org/)
+   - Register for a free developer account
+   - Verify your email address
+   - Copy your API key from the dashboard
+
+### Entering API Keys
+Once you have your API keys:
+1. Open the Meraki AI web interface
+2. Click the "Settings" gear icon in the top-right
+3. Enter each API key in the corresponding field
+4. Click "Save Keys" to store them securely
+5. The keys are saved locally in your browser
+
+## 💬 How to Use Meraki AI
+
+### Basic Conversation Flow
+
+1. **Initiate Recording**
+   - Click the animated orb in the center of the screen
+   - The orb will change color to indicate it's listening
+   - Grant microphone permissions if prompted by your browser
+
+2. **Speak Naturally**
+   - Talk normally into your microphone
+   - You'll see live transcription appear below the orb
+   - Speak clearly for best recognition accuracy
+
+3. **AI Processing**
+   - When you finish speaking, click the orb again to stop recording
+   - The orb will show a processing animation
+   - Meraki AI generates a contextual response
+
+4. **Listen to Response**
+   - The AI response is played back through your speakers
+   - The orb animates during speech playback
+   - Text of the conversation appears in the chat history
+
+### Special Features
+
+#### News Integration
+Ask Meraki about current events using phrases like:
+- "What's in the news today?"
+- "Any interesting headlines?"
+- "Tell me about current events"
+- "What's happening in the world?"
+
+#### Conversation Memory
+Meraki remembers your conversation context, so you can:
+- Reference previous topics
+- Ask follow-up questions
+- Build on earlier discussions
+- Maintain natural conversation flow
+
+#### Chat History
+- View your conversation history in the expandable chat panel
+- Clear history using the "Clear" button
+- History persists during your session
+
+## 🛠️ Technical Architecture
+
+### Technology Stack
 - **Backend Framework**: FastAPI with WebSocket support for real-time communication
-- **Frontend**: HTML5, CSS3, TailwindCSS, and vanilla JavaScript with particle effects
-- **Speech Recognition**: AssemblyAI Streaming API v3 for real-time transcription
-- **AI Processing**: Google Gemini 1.5 Flash with streaming responses
+- **Frontend**: Modern HTML5, CSS3, and vanilla JavaScript
+- **Speech Processing**: AssemblyAI Streaming API v3 for real-time transcription
+- **AI Engine**: Google Gemini 1.5 Flash with streaming response generation
 - **Voice Synthesis**: Murf AI WebSocket API for low-latency audio generation
-- **News Integration**: NewsAPI for real-time headlines
-- **Real-time Communication**: WebSocket protocol for bidirectional streaming
-- **Session Management**: In-memory chat history with configurable limits
-- **Error Handling**: Comprehensive fallback mechanisms and logging
+- **News Service**: NewsAPI for real-time headline integration
+- **Communication**: WebSocket protocol for bidirectional streaming
 
 ### Project Structure
 ```
+meraki-ai/
 ├── app.py                 # Main FastAPI application with WebSocket handlers
-├── run.py                 # Application launcher with dependency validation  
-├── requirements.txt       # Python dependencies including newsapi-python
-├── .env.sample           # Environment template with all API keys
+├── run.py                 # Application launcher with dependency validation
+├── requirements.txt       # Python package dependencies
 ├── templates/
-│   └── index.html        # Main UI with Meraki branding and particle effects
+│   └── index.html        # Main web interface with Meraki branding
 └── static/
     └── style.css         # Custom styles and animations
 ```
 
----
-
-## 🎯 Usage Instructions
-
-### Basic Interaction
-1. **Start Conversation** - Click the animated AI orb to begin recording
-2. **Voice Input** - Speak naturally into your microphone
-3. **Real-time Feedback** - Watch live transcription appear below the orb
-4. **AI Response** - Meraki responds with personality-rich audio
-5. **End Recording** - Click the orb again to stop and process
-
-### Special Features
-
-#### 📰 News Integration ("Spider-Sense")
-Ask Meraki about current events:
-- *"What's in the news?"*
-- *"Any headlines today?"*
-- *"What's happening in the world?"*
-
-Meraki will use her "spider-sense" to fetch and deliver the latest headlines with characteristic wit!
-
-#### 💭 Conversation Memory
-Meraki maintains context throughout your session, remembering previous topics and building on your conversation naturally.
-
-#### 🎭 Adaptive Personality
-- **Cheerful & Witty**: Default Spider-Man inspired personality
-- **Contextually Serious**: Automatically shifts tone for important topics
-- **Conversational**: Uses natural language patterns and humor
-
----
-
-## 🛠️ Troubleshooting
-
-### Common Issues and Solutions
-
-#### 🚫 **Microphone Access Issues**
-- **Browser Permissions**: Ensure microphone access is allowed in browser settings
-- **HTTPS Requirement**: Use HTTPS or localhost for microphone API access
-- **Hardware Check**: Test microphone in other applications
-- **Browser Compatibility**: Use Chrome, Firefox, or Safari (latest versions)
-
-#### 🔑 **API Authentication Errors**
-- **Environment File**: Verify `.env` file exists in project root with correct keys
-- **API Key Format**: Check for trailing spaces or formatting issues
-- **Service Status**: Confirm API accounts are active and have sufficient quotas
-- **Key Validation**: Test each API key individually in their respective dashboards
-
-#### 🌐 **Connection & Performance Issues**
-- **Port Availability**: Ensure port 8000 is not blocked by firewall
-- **Network Stability**: Verify stable internet connection for API calls
-- **Resource Usage**: Close unnecessary applications to free system resources
-- **Server Restart**: Restart the application using `python run.py`
-
-#### 📰 **News Feature Not Working**
-- **API Key Missing**: Check if `NEWS_API_KEY` is set in `.env` file
-- **Free Tier Limits**: NewsAPI free tier has daily request limits
-- **Network Restrictions**: Some networks may block NewsAPI endpoints
-
-#### 🔊 **Audio Output Problems**
-- **Browser Audio**: Check browser audio permissions and system volume
-- **Murf API Issues**: Verify Murf API key and account status  
-- **Fallback Mode**: Application includes fallback text responses if audio fails
-- **WebSocket Connection**: Check browser developer console for WebSocket errors
-
-#### 💬 **AI Response Issues**
-- **Gemini API**: Verify Google Gemini API key and quota limits
-- **Context Length**: Long conversations may hit context limits (auto-managed)
-- **Streaming Errors**: Check network connectivity for streaming responses
-
-### Debug Mode
-Enable detailed logging by checking the terminal output when running `python run.py`. Look for:
-- ✅ API key validation messages
-- 🔍 WebSocket connection status  
-- 📝 Request/response logging
-- ❌ Error details and stack traces
-
-### Getting Help
-1. Check browser developer console (F12) for JavaScript errors
-2. Monitor terminal output for backend errors
-3. Verify all dependencies: `pip install -r requirements.txt`
-4. Test with a fresh virtual environment if issues persist
-
----
-
 ## 📋 System Requirements
 
 ### Minimum Requirements
+- **Operating System**: Windows 10+, macOS 10.15+, or Linux (Ubuntu 18.04+)
 - **Python**: Version 3.8 or higher
-- **Browser**: Chrome 80+, Firefox 75+, or Safari 14+ (latest versions recommended)
-- **Network**: Stable internet connection (minimum 1 Mbps for real-time features)
-- **Hardware**: 
-  - Functional microphone and audio output device
-  - 2GB RAM (4GB recommended for optimal performance)
-  - Modern CPU for real-time audio processing
+- **RAM**: 2GB available memory
+- **Storage**: 100MB free disk space
+- **Network**: Stable internet connection (minimum 1 Mbps)
 
-### Recommended Setup
-- **OS**: Windows 10/11, macOS 10.15+, or Ubuntu 18.04+
-- **Python**: Version 3.9+ with virtual environment
-- **RAM**: 4GB+ for smooth streaming performance  
-- **Network**: Broadband connection for best real-time experience
+### Browser Compatibility
+- **Chrome**: Version 80+ (Recommended)
+- **Firefox**: Version 75+
+- **Safari**: Version 14+
+- **Edge**: Version 80+
+
+### Hardware Requirements
+- **Microphone**: Any functional microphone (built-in or external)
+- **Speakers/Headphones**: For audio output
+- **CPU**: Modern processor capable of real-time audio processing
+
+## 🔧 Troubleshooting Guide
+
+### Common Issues and Solutions
+
+#### Microphone Access Problems
+**Issue**: Browser doesn't detect microphone or access is denied
+**Solutions**:
+- Ensure you're accessing the site via `https://` or `localhost`
+- Check browser permissions: Settings → Privacy → Microphone
+- Test microphone in other applications to verify it's working
+- Try refreshing the page and granting permissions again
+- Use Chrome or Firefox for best compatibility
+
+#### API Authentication Errors
+**Issue**: "API key invalid" or authentication failures
+**Solutions**:
+- Verify all API keys are entered correctly (no extra spaces)
+- Check that your API accounts are active and verified
+- Ensure you haven't exceeded free tier limits
+- Test each API key individually in their respective dashboards
+- Re-enter keys if you suspect they were corrupted
+
+#### Audio Playback Issues
+**Issue**: Can't hear AI responses or audio is distorted
+**Solutions**:
+- Check system volume and browser audio settings
+- Verify speakers/headphones are connected and working
+- Test audio in other applications
+- Try different browsers
+- Check if browser has audio permissions for the site
+
+#### Connection and Performance Issues
+**Issue**: Slow responses, timeouts, or connection errors
+**Solutions**:
+- Check your internet connection stability
+- Restart the application: Stop with `Ctrl+C`, then run `python run.py`
+- Ensure port 8000 isn't blocked by firewall
+- Close other bandwidth-intensive applications
+- Try using a wired internet connection instead of Wi-Fi
+
+#### WebSocket Connection Failures
+**Issue**: Real-time features not working properly
+**Solutions**:
+- Check browser console (F12) for error messages
+- Verify WebSocket support in your browser
+- Disable browser extensions that might block WebSockets
+- Try incognito/private browsing mode
+- Restart both browser and application
+
+### Getting Additional Help
+If you continue experiencing issues:
+1. Check the browser developer console (F12) for detailed error messages
+2. Review the terminal output where you ran `python run.py`
+3. Ensure all dependencies are properly installed: `pip install -r requirements.txt`
+4. Try running in a fresh Python virtual environment
+
+## 🎯 Advanced Usage
+
+### Customizing AI Personality
+You can modify Meraki's personality by editing the `AI_SYSTEM_PROMPT` variable in `app.py`. This allows you to:
+- Change the AI's speaking style
+- Adjust response length and tone
+- Add specific knowledge domains
+- Modify greeting patterns
+
+### Development and Extension
+The modular architecture makes it easy to add new features:
+- **New API Integrations**: Follow the existing pattern in `app.py`
+- **UI Customization**: Modify `templates/index.html` and `static/style.css`
+- **Additional WebSocket Endpoints**: Extend the WebSocket handler
+- **Custom Voice Models**: Integrate different TTS providers
+
+## 📄 License and Credits
+
+This project is designed to demonstrate modern AI voice interaction capabilities using cutting-edge APIs and technologies. It showcases the integration of multiple AI services to create a seamless conversational experience.
+
+**Technologies Used**:
+- FastAPI for robust backend API development
+- WebSocket for real-time bidirectional communication
+- AssemblyAI for accurate speech recognition
+- Google Gemini for intelligent AI responses
+- Murf AI for natural voice synthesis
+- Modern web technologies for responsive UI
 
 ---
 
-## 🎭 Meet Meraki
-
-**Meraki** is your friendly neighborhood AI assistant with a unique personality inspired by Spider-Man. Here's what makes her special:
-
-### Personality Traits
-- **Cheerful & Optimistic**: Always looking on the bright side
-- **Witty & Humorous**: Delivers clever jokes and lighthearted banter
-- **Contextually Aware**: Knows when to be serious about important matters
-- **Conversational**: Engages in natural, flowing dialogue
-- **News-Savvy**: Uses her "spider-sense" to stay updated on current events
-
-### Interaction Style
-- Greets with casual phrases like *"What's up, doc?"*
-- Maintains Spider-Man's friendly neighborhood vibe
-- Adapts tone based on conversation context
-- Provides concise, natural responses optimized for voice interaction
-
----
-
-## 🚀 Development & Customization
-
-### Key Components
-- **`app.py`**: Main application with WebSocket handlers and API endpoints
-- **`run.py`**: Startup script with dependency validation
-- **`templates/index.html`**: Frontend interface with Meraki branding
-- **`static/style.css`**: Custom animations and particle effects
-
-### Personality Customization
-Modify the `AI_SYSTEM_PROMPT` in `app.py` to adjust Meraki's personality, greeting style, and response patterns.
-
-### Adding New Features
-The modular architecture makes it easy to extend functionality:
-- Add new API integrations following the existing pattern
-- Implement additional WebSocket endpoints for real-time features
-- Customize the UI with new animations and styles
-
----
-
-## 📄 License & Credits
-
-This project demonstrates modern AI voice interaction capabilities using cutting-edge APIs and technologies. Built with love for the AI community! 🕷️✨
 
 
