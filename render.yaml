@@ -7,3 +7,4 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.16 # Or your preferred Python version
+        
