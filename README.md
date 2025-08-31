@@ -39,8 +39,7 @@ For developers and customization:
 
 1. **Clone Repository**
    ```bash
-   git clone <repository-url>
-   cd meraki-ai
+   git clone https://github.com/RishabhCodezZz/30-Days-of-murf-ai
    ```
 
 2. **Install Dependencies**
